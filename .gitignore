@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# Secrets
+.env
+config/wrds.yaml
+
+# Data
+data/raw/*
+data/intermediate/*
+data/processed/*
+data/output/*
+
+# Keep folder structure
+!data/raw/.gitkeep
+!data/intermediate/.gitkeep
+!data/processed/.gitkeep
+!data/output/.gitkeep
+
+# Notebook noise
+*.nbconvert.ipynb
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Generated research outputs if desired
+tables/main/*
+tables/appendix/*
+figures/main/*
+figures/appendix/*
+
+!tables/main/.gitkeep
+!tables/appendix/.gitkeep
+!figures/main/.gitkeep
+!figures/appendix/.gitkeep
