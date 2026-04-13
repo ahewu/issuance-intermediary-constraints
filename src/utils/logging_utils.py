@@ -1,8 +1,9 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
 
-def get_logger(name: str, log_file: str | None = None) -> logging.Logger:
+def get_logger(name: str, log_file: Optional[str] = None) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
