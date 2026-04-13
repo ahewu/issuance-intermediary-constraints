@@ -11,9 +11,7 @@ from src.utils.io import load_yaml, ensure_dir, read_parquet
 from src.utils.logging_utils import get_logger
 
 
-# ----------------------------
 # Helpers
-# ----------------------------
 def sanitize_columns(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     out = df.copy()
     for c in cols:
@@ -79,9 +77,7 @@ def fit_ts_ols(df: pd.DataFrame, y: str, xvars: list[str], hac_lags: int = 6):
     return res, reg
 
 
-# ----------------------------
 # Main
-# ----------------------------
 def main() -> None:
     logger = get_logger("run_regressions", log_file="logs/run_regressions.log")
     paths = load_yaml("config/paths.yaml")
@@ -93,16 +89,13 @@ def main() -> None:
     logger.info(f"Reading regression-ready panel from {panel_path}")
     df = read_parquet(panel_path)
 
-    # ----------------------------
+
     # Base sample
-    # ----------------------------
     df = df[df["sample_regression_main"] == 1].copy()
     df["month"] = pd.to_datetime(df["month"], errors="coerce")
     df["gvkey"] = df["gvkey"].astype(str).str.strip()
 
-    # ----------------------------
     # Numeric cleanup
-    # ----------------------------
     numeric_cols = [
         "log_total_issued_1p",
         "issue_count",
@@ -136,16 +129,14 @@ def main() -> None:
     # stable aggregate-liquidity input
     df["liq_rank"] = df["amihud_proxy_weighted_w"].rank(pct=True)
 
-    # ----------------------------
+
     # Restrict to firms with variation in intensive-margin DV
-    # ----------------------------
     var_check = df.groupby("gvkey")["log_total_issued_1p"].std()
     valid_gvkeys = var_check[var_check > 1e-8].index
     df = df[df["gvkey"].isin(valid_gvkeys)].copy()
 
-    # ----------------------------
+
     # Aggregate liquidity time series
-    # ----------------------------
     liq_agg = build_aggregate_liquidity(df)
     df = df.merge(
         liq_agg[["month", "liq_agg_mean", "liq_agg_mean_lag1"]],
@@ -153,9 +144,9 @@ def main() -> None:
         how="left",
     )
 
-    # ----------------------------
+
     # Keep only columns needed for regressions
-    # ----------------------------
+
     keep_cols = [
         "gvkey",
         "month",
@@ -178,10 +169,9 @@ def main() -> None:
 
     model_results = []
 
-    # ------------------------------------
+
     # 3.1 Baseline
     # Intensive margin only
-    # ------------------------------------
     logger.info("Running 3.1 baseline FE OLS: log_total_issued_1p")
     formula_31 = (
         "log_total_issued_1p ~ log_rate_vol_10y_w + leverage_w + cash_ratio_w + "
@@ -190,10 +180,9 @@ def main() -> None:
     res_31, reg_31 = fit_firm_fe_ols(df, formula_31, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.1_baseline_log_total_issued", res_31, len(reg_31)))
 
-    # ------------------------------------
+
     # 3.2 Liquidity AR(1)
     # Time series
-    # ------------------------------------
     logger.info("Running 3.2 aggregate liquidity AR(1)")
     liq_ts = (
         df[["month", "log_rate_vol_10y_w", "term_spread_w"]]
@@ -209,9 +198,8 @@ def main() -> None:
     )
     model_results.append(result_to_tidy("3.2_liquidity_ar1", res_32, len(reg_32)))
 
-    # ------------------------------------
+
     # 3.3 Mechanism: aggregate liquidity
-    # ------------------------------------
     logger.info("Running 3.3 mechanism FE OLS: aggregate liquidity")
     formula_33 = (
         "log_total_issued_1p ~ log_rate_vol_10y_w + liq_agg_mean + leverage_w + cash_ratio_w + "
@@ -220,9 +208,8 @@ def main() -> None:
     res_33, reg_33 = fit_firm_fe_ols(df, formula_33, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.3_mechanism_aggregate_liquidity", res_33, len(reg_33)))
 
-    # ------------------------------------
+
     # Save outputs
-    # ------------------------------------
     results_df = pd.concat(model_results, ignore_index=True)
     results_path = out_dir / "regression_results_tidy.csv"
     results_df.to_csv(results_path, index=False)

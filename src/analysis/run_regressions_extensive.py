@@ -88,17 +88,13 @@ def main() -> None:
     logger.info(f"Reading regression-ready panel from {panel_path}")
     df = read_parquet(panel_path)
 
-    # ----------------------------
     # Base sample
-    # ----------------------------
     df = df[df["sample_regression_main"] == 1].copy()
     df["month"] = pd.to_datetime(df["month"], errors="coerce")
     df["gvkey"] = df["gvkey"].astype(str).str.strip()
     df["issued"] = pd.to_numeric(df["issued"], errors="coerce").fillna(0).astype(float)
 
-    # ----------------------------
     # Numeric cleanup
-    # ----------------------------
     numeric_cols = [
         "issued",
         "leverage_w",
@@ -133,9 +129,8 @@ def main() -> None:
         how="left",
     )
 
-    # ----------------------------
+
     # Samples
-    # ----------------------------
     keep_cols = [
         "gvkey",
         "month",
@@ -159,9 +154,8 @@ def main() -> None:
 
     model_results = []
 
-    # ------------------------------------
+
     # 3.1 LPM with firm FE
-    # ------------------------------------
     logger.info("Running 3.1 LPM with firm FE")
     formula_lpm_31 = (
         "issued ~ log_rate_vol_10y_w + leverage_w + cash_ratio_w + "
@@ -171,9 +165,8 @@ def main() -> None:
     res_lpm_31, reg_lpm_31 = fit_lpm(df, formula_lpm_31, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.1_lpm_fe_issued", res_lpm_31, len(reg_lpm_31)))
 
-    # ------------------------------------
+
     # 3.3 LPM with firm FE + aggregate liquidity
-    # ------------------------------------
     logger.info("Running 3.3 LPM with firm FE and aggregate liquidity")
     formula_lpm_33 = (
         "issued ~ log_rate_vol_10y_w + liq_agg_mean + leverage_w + cash_ratio_w + "
@@ -183,10 +176,9 @@ def main() -> None:
     res_lpm_33, reg_lpm_33 = fit_lpm(df, formula_lpm_33, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.3_lpm_fe_issued_aggregate_liquidity", res_lpm_33, len(reg_lpm_33)))
 
-    # ------------------------------------
+
     # Robustness: pooled logit baseline
     # No firm FE here
-    # ------------------------------------
     logger.info("Running pooled logit baseline")
     formula_logit_31 = (
         "issued ~ log_rate_vol_10y_w + leverage_w + cash_ratio_w + "
@@ -195,9 +187,8 @@ def main() -> None:
     res_logit_31, reg_logit_31 = fit_logit(df, formula_logit_31, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.1_logit_pooled_issued", res_logit_31, len(reg_logit_31)))
 
-    # ------------------------------------
+
     # Robustness: pooled logit mechanism
-    # ------------------------------------
     logger.info("Running pooled logit with aggregate liquidity")
     formula_logit_33 = (
         "issued ~ log_rate_vol_10y_w + liq_agg_mean + leverage_w + cash_ratio_w + "
@@ -206,9 +197,8 @@ def main() -> None:
     res_logit_33, reg_logit_33 = fit_logit(df, formula_logit_33, cluster_col="gvkey")
     model_results.append(result_to_tidy("3.3_logit_pooled_issued_aggregate_liquidity", res_logit_33, len(reg_logit_33)))
 
-    # ------------------------------------
+
     # Save outputs
-    # ------------------------------------
     results_df = pd.concat(model_results, ignore_index=True)
     results_path = out_dir / "regression_results_extensive_tidy.csv"
     results_df.to_csv(results_path, index=False)

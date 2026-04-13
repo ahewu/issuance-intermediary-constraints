@@ -194,6 +194,11 @@ def build_regression_ready(df: pd.DataFrame, logger) -> pd.DataFrame:
         "term_spread",
         "term_spread_w",
 
+        "baa_treasury_spread",
+        "baa_treasury_spread_w",
+        "credit_spread",
+        "credit_spread_w",
+
         # flags
         "sample_has_controls",
         "sample_has_liquidity",

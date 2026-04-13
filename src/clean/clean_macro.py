@@ -9,9 +9,10 @@ from src.utils.logging_utils import get_logger
 
 
 def winsorize(series: pd.Series, lower: float = 0.01, upper: float = 0.99) -> pd.Series:
-    return series.clip(
-        lower=series.quantile(lower),
-        upper=series.quantile(upper),
+    s = pd.to_numeric(series, errors="coerce")
+    return s.clip(
+        lower=s.quantile(lower),
+        upper=s.quantile(upper),
     )
 
 
@@ -22,8 +23,9 @@ def clean_macro(df: pd.DataFrame, logger) -> pd.DataFrame:
     raw_rows = len(df)
     logger.info(f"Initial rows: {raw_rows:,}")
 
-
+    # ----------------------------
     # Standardize types
+    # ----------------------------
     df["month"] = pd.to_datetime(df["month"], errors="coerce")
 
     numeric_cols = [
@@ -32,39 +34,47 @@ def clean_macro(df: pd.DataFrame, logger) -> pd.DataFrame:
         "ust2y_eom",
         "term_spread",
         "vol_main",
+        "baa",
+        "aaa",
+        "gs10_monthly",
     ]
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-
+    # ----------------------------
     # Drop missing month
+    # ----------------------------
     before = len(df)
     df = df.dropna(subset=["month"])
     logger.info(f"Dropped missing month rows: {before - len(df):,}")
 
-
+    # ----------------------------
     # Restrict to project sample window
+    # ----------------------------
     before = len(df)
     df = df[(df["month"] >= "2005-01-31") & (df["month"] <= "2025-12-31")]
     logger.info(f"Dropped outside sample window: {before - len(df):,}")
 
-
+    # ----------------------------
     # Deduplicate month
+    # ----------------------------
     before = len(df)
     df = df.sort_values("month").drop_duplicates(subset=["month"], keep="last")
     logger.info(f"Dropped duplicate months: {before - len(df):,}")
 
-
+    # ----------------------------
     # Rename core variables
+    # ----------------------------
     rename_map = {
         "vol_main": "rate_vol_10y",
     }
     existing_rename = {k: v for k, v in rename_map.items() if k in df.columns}
     df = df.rename(columns=existing_rename)
 
-
+    # ----------------------------
     # Derived variables
+    # ----------------------------
     if "ust10y_eom" in df.columns and "ust2y_eom" in df.columns and "term_spread" not in df.columns:
         df["term_spread"] = df["ust10y_eom"] - df["ust2y_eom"]
 
@@ -79,8 +89,32 @@ def clean_macro(df: pd.DataFrame, logger) -> pd.DataFrame:
     if "term_spread" in df.columns:
         df["term_spread_w"] = winsorize(df["term_spread"])
 
+    # ----------------------------
+    # Credit spread construction
+    # ----------------------------
+    if "baa" in df.columns:
+        df["baa_yield"] = pd.to_numeric(df["baa"], errors="coerce")
 
+    if "aaa" in df.columns:
+        df["aaa_yield"] = pd.to_numeric(df["aaa"], errors="coerce")
+
+    # Primary spread: BAA - 10y Treasury
+    if "baa_yield" in df.columns and "ust10y_eom" in df.columns:
+        df["baa_treasury_spread"] = df["baa_yield"] - df["ust10y_eom"]
+
+    # Optional alternate spread
+    if "baa_yield" in df.columns and "aaa_yield" in df.columns:
+        df["baa_aaa_spread"] = df["baa_yield"] - df["aaa_yield"]
+
+    if "baa_treasury_spread" in df.columns:
+        df["baa_treasury_spread_w"] = winsorize(df["baa_treasury_spread"])
+        # Generic name for downstream regressions
+        df["credit_spread_w"] = df["baa_treasury_spread_w"]
+        df["credit_spread"] = df["baa_treasury_spread"]
+
+    # ----------------------------
     # Keep core columns
+    # ----------------------------
     keep_cols = [
         "month",
         "rate_vol_10y",
@@ -93,16 +127,25 @@ def clean_macro(df: pd.DataFrame, logger) -> pd.DataFrame:
         "term_spread",
         "term_spread_w",
         "d_ust10y_eom",
+        "baa_yield",
+        "aaa_yield",
+        "baa_treasury_spread",
+        "baa_treasury_spread_w",
+        "baa_aaa_spread",
+        "credit_spread",
+        "credit_spread_w",
     ]
     keep_cols = [c for c in keep_cols if c in df.columns]
     df = df[keep_cols].copy()
 
-
+    # ----------------------------
     # Final sort
+    # ----------------------------
     df = df.sort_values("month").reset_index(drop=True)
 
-
+    # ----------------------------
     # Diagnostics
+    # ----------------------------
     final_rows = len(df)
     logger.info(f"Final clean rows: {final_rows:,}")
     logger.info(f"Rows dropped total: {raw_rows - final_rows:,}")
@@ -119,6 +162,12 @@ def clean_macro(df: pd.DataFrame, logger) -> pd.DataFrame:
         logger.info(f"Missing term_spread: {df['term_spread'].isna().mean():.2%}")
         logger.info(
             f"term_spread quantiles: {df['term_spread'].quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99]).to_dict()}"
+        )
+
+    if "baa_treasury_spread" in df.columns:
+        logger.info(f"Missing baa_treasury_spread: {df['baa_treasury_spread'].isna().mean():.2%}")
+        logger.info(
+            f"baa_treasury_spread quantiles: {df['baa_treasury_spread'].quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99]).to_dict()}"
         )
 
     return df

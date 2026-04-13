@@ -80,9 +80,8 @@ def main() -> None:
     logger.info(f"Reading regression-ready panel from {panel_path}")
     df = read_parquet(panel_path)
 
-# ----------------------------
+
 # Base sample
-# ----------------------------
     df = df[df["sample_regression_main"] == 1].copy()
     df["month"] = pd.to_datetime(df["month"], errors="coerce")
     df["gvkey"] = df["gvkey"].astype(str).str.strip()
@@ -92,9 +91,8 @@ def main() -> None:
     spread_col = choose_spread_column(df)
     logger.info(f"Using spread variable: {spread_col}")
 
-# ----------------------------
+
 # Numeric cleanup
-# ----------------------------
     numeric_cols = [
         "issued",
         "log_total_issued_1p",
@@ -126,10 +124,9 @@ def main() -> None:
 # Key interaction
     df["vol_x_spread"] = df["log_rate_vol_10y_w"] * df[spread_col]
 
-# ----------------------------
+
 # Intensive-margin sample
 # Keep firms with variation in log issuance
-# ----------------------------
     intensive_df = df.copy()
     intensive_var = intensive_df.groupby("gvkey")["log_total_issued_1p"].std()
     valid_gvkeys = intensive_var[intensive_var > 1e-8].index
@@ -155,9 +152,8 @@ def main() -> None:
     logger.info(f"Intensive-margin rows: {len(intensive_df):,}")
     logger.info(f"Intensive-margin firms: {intensive_df['gvkey'].nunique():,}")
 
-# ----------------------------
+
 # Extensive-margin sample
-# ----------------------------
     extensive_df = df.copy()
     extensive_keep = [
         "gvkey",
@@ -182,9 +178,8 @@ def main() -> None:
 
     model_results = []
 
-# ------------------------------------
+
 # Intensive baseline
-# ------------------------------------
     logger.info("Running intensive baseline FE OLS")
     formula_int_base = (
         f"log_total_issued_1p ~ log_rate_vol_10y_w + {spread_col} + "
@@ -194,9 +189,8 @@ def main() -> None:
     res_int_base, reg_int_base = fit_firm_fe_ols(intensive_df, formula_int_base, cluster_col="gvkey")
     model_results.append(result_to_tidy("pivot_intensive_baseline", res_int_base, len(reg_int_base)))
 
-# ------------------------------------
+
 # Intensive interaction
-# ------------------------------------
     logger.info("Running intensive interaction FE OLS")
     formula_int_inter = (
         f"log_total_issued_1p ~ log_rate_vol_10y_w + {spread_col} + vol_x_spread + "
@@ -206,9 +200,8 @@ def main() -> None:
     res_int_inter, reg_int_inter = fit_firm_fe_ols(intensive_df, formula_int_inter, cluster_col="gvkey")
     model_results.append(result_to_tidy("pivot_intensive_interaction", res_int_inter, len(reg_int_inter)))
 
-# ------------------------------------
+
 # Extensive baseline (LPM)
-# ------------------------------------
     logger.info("Running extensive baseline FE LPM")
     formula_ext_base = (
         f"issued ~ log_rate_vol_10y_w + {spread_col} + "
@@ -218,9 +211,8 @@ def main() -> None:
     res_ext_base, reg_ext_base = fit_firm_fe_ols(extensive_df, formula_ext_base, cluster_col="gvkey")
     model_results.append(result_to_tidy("pivot_extensive_baseline", res_ext_base, len(reg_ext_base)))
 
-# ------------------------------------
+
 # Extensive interaction (LPM)
-# ------------------------------------
     logger.info("Running extensive interaction FE LPM")
     formula_ext_inter = (
         f"issued ~ log_rate_vol_10y_w + {spread_col} + vol_x_spread + "
@@ -230,9 +222,8 @@ def main() -> None:
     res_ext_inter, reg_ext_inter = fit_firm_fe_ols(extensive_df, formula_ext_inter, cluster_col="gvkey")
     model_results.append(result_to_tidy("pivot_extensive_interaction", res_ext_inter, len(reg_ext_inter)))
 
-# ------------------------------------
+
 # Save outputs
-# ------------------------------------
     results_df = pd.concat(model_results, ignore_index=True)
     results_path = out_dir / "regression_results_spread_pivot_tidy.csv"
     results_df.to_csv(results_path, index=False)
