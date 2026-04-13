@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import List
 
 import pandas as pd
 import wrds
@@ -21,40 +22,10 @@ def connect_wrds() -> wrds.Connection:
     return wrds.Connection(wrds_username=username)
 
 
-def inspect_trace_libraries(db: wrds.Connection, logger):
-    logger.info("Inspecting likely TRACE libraries...")
+def pull_trace_year(db: wrds.Connection, year: int, logger) -> pd.DataFrame:
+    logger.info(f"Pulling TRACE for {year}...")
 
-    libraries = db.list_libraries()
-    candidates = [
-        lib for lib in libraries
-        if any(x in lib.lower() for x in ["trace", "finra", "bond"])
-    ]
-    logger.info(f"Candidate TRACE-related libraries: {candidates}")
-
-    for lib in candidates:
-        try:
-            tables = db.list_tables(library=lib)
-            logger.info(f"Tables in {lib}: {tables[:100]}")
-        except Exception as e:
-            logger.warning(f"Could not inspect {lib}: {e}")
-
-
-def preview_table(db: wrds.Connection, library: str, table: str, logger):
-    logger.info(f"Previewing {library}.{table}...")
-    try:
-        df = db.get_table(library=library, table=table, obs=5)
-        logger.info(f"Preview of {library}.{table}:\n{df.head()}")
-        logger.info(f"Columns in {library}.{table}: {list(df.columns)}")
-        return df
-    except Exception as e:
-        logger.warning(f"Could not preview {library}.{table}: {e}")
-        return pd.DataFrame()
-
-
-def pull_trace_sample(db, logger):
-    logger.info("Pulling TRACE sample (Jan 2019)...")
-
-    query = """
+    query = f"""
     SELECT
         trd_exctn_dt,
         cusip_id,
@@ -62,14 +33,59 @@ def pull_trace_sample(db, logger):
         entrd_vol_qt,
         rpt_side_cd
     FROM wrdsapps_bondret.trace_enhanced_clean
-    WHERE trd_exctn_dt >= '2019-01-01'
-      AND trd_exctn_dt < '2019-02-01'
+    WHERE trd_exctn_dt >= '{year}-01-01'
+      AND trd_exctn_dt < '{year + 1}-01-01'
     """
 
     df = db.raw_sql(query, date_cols=["trd_exctn_dt"])
 
-    logger.info(f"Pulled {len(df):,} TRACE sample rows.")
+    logger.info(f"Pulled {len(df):,} rows for {year}.")
     return df
+
+
+def validate_trace_year(df: pd.DataFrame, year: int, logger) -> None:
+    logger.info(f"Running checks for {year}...")
+
+    logger.info(f"{year} date range: {df['trd_exctn_dt'].min()} → {df['trd_exctn_dt'].max()}")
+    logger.info(f"{year} rows: {len(df):,}")
+    logger.info(f"{year} unique bonds: {df['cusip_id'].nunique():,}")
+    logger.info(f"{year} missing price: {df['rptd_pr'].isna().mean():.2%}")
+    logger.info(f"{year} missing volume: {df['entrd_vol_qt'].isna().mean():.2%}")
+
+    if "rpt_side_cd" in df.columns:
+        side_counts = (
+            df["rpt_side_cd"]
+            .astype("string")
+            .fillna("MISSING")
+            .value_counts()
+            .to_dict()
+        )
+        logger.info(f"{year} rpt_side_cd distribution: {side_counts}")
+
+
+def pull_trace_range(
+    db: wrds.Connection,
+    years: List[int],
+    raw_trace_dir: Path,
+    logger,
+    skip_existing: bool = True,
+) -> None:
+    for year in years:
+        outpath = raw_trace_dir / f"trace_{year}.parquet"
+
+        if skip_existing and outpath.exists():
+            logger.info(f"Skipping {year}; file already exists at {outpath}")
+            continue
+
+        df = pull_trace_year(db, year, logger)
+
+        save_parquet(df, outpath)
+        logger.info(f"Saved TRACE data for {year} to {outpath}")
+
+        size_mb = outpath.stat().st_size / (1024 ** 2)
+        logger.info(f"{year} file size: {size_mb:,.1f} MB")
+
+        validate_trace_year(df, year, logger)
 
 
 def main():
@@ -79,28 +95,22 @@ def main():
     raw_trace_dir = Path(paths["raw_trace"])
     ensure_dir(raw_trace_dir)
 
-    logger.info("Starting TRACE discovery.")
+    logger.info("Starting TRACE yearly pull.")
 
     db = connect_wrds()
     logger.info("Connected to WRDS successfully.")
 
-    inspect_trace_libraries(db, logger)
+    years = list(range(2010, 2026))
+    pull_trace_range(
+        db=db,
+        years=years,
+        raw_trace_dir=raw_trace_dir,
+        logger=logger,
+        skip_existing=True,
+    )
 
-    logger.info("After reviewing the log, set candidate TRACE tables explicitly.")
-    
-    df = pull_trace_sample(db, logger)
+    logger.info("TRACE yearly pull complete.")
 
-    outpath = raw_trace_dir / "trace_sample_2019_01.parquet"
-    save_parquet(df, outpath)
-
-    logger.info(f"Saved TRACE sample to {outpath}")
-
-    logger.info("Running checks...")
-    logger.info(f"Date range: {df['trd_exctn_dt'].min()} → {df['trd_exctn_dt'].max()}")
-    logger.info(f"Rows: {len(df):,}")
-    logger.info(f"Unique bonds: {df['cusip_id'].nunique():,}")
-    logger.info(f"Missing price: {df['rptd_pr'].isna().mean():.2%}")
-    logger.info(f"Missing volume: {df['entrd_vol_qt'].isna().mean():.2%}")
 
 if __name__ == "__main__":
     main()
