@@ -1,0 +1,24 @@
+project_root: .
+data_raw: data/raw
+data_intermediate: data/intermediate
+data_processed: data/processed
+data_output: data/output
+
+raw_fisd: data/raw/fisd
+raw_compustat: data/raw/compustat
+raw_trace: data/raw/trace
+raw_ccm: data/raw/crsp_ccm
+raw_treasury: data/raw/treasury
+raw_move: data/raw/move
+
+intermediate_links: data/intermediate/links
+intermediate_monthly_panels: data/intermediate/monthly_panels
+intermediate_bond_level: data/intermediate/bond_level
+intermediate_liquidity: data/intermediate/liquidity
+
+processed_regression_samples: data/processed/regression_samples
+
+tables_main: tables/main
+tables_appendix: tables/appendix
+figures_main: figures/main
+figures_appendix: figures/appendix

@@ -1,0 +1,22 @@
+sample:
+  start_date: "2004-01-01"
+  end_date: "2025-12-31"
+  frequency: "monthly"
+  include_financials: false
+  include_utilities: false
+  currency: "USD"
+
+winsorization:
+  lower: 0.01
+  upper: 0.99
+
+issuance:
+  aggregate_same_day_tranches: true
+  log_amount_offset: 1.0
+
+liquidity:
+  min_trades_per_month: 5
+
+maturity_wall:
+  months_forward_main: 12
+  months_forward_alt: [24, 36]
