@@ -16,6 +16,10 @@ def ensure_dir(path: Union[str, Path]) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
+def read_parquet(path):
+    return pd.read_parquet(path)
+
+
 def save_parquet(df: pd.DataFrame, path: Union[str, Path], index: bool = False) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
